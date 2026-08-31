@@ -1,0 +1,990 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* Makes native controls and their popups (date picker, scrollbars, focus
+     rings) render dark instead of the default white. */
+  color-scheme: dark;
+
+  --bg:          #0f1117;
+  --surface:     #1a1d2e;
+  --surface2:    #1e2235;
+  --surface3:    #262b40;  /* dropdown panel hover, one step above surface2 */
+  --border:      #2a2d3e;
+  --text:        #e2e8f0;
+  --muted:       #8892a4;
+  --accent:      #10b981;
+  --accent-dim:  rgba(16,185,129,.12);
+  --danger:      #f43f5e;
+  --danger-dim:  rgba(244,63,94,.12);
+  --warn:        #f59e0b;
+  --info:        #3b82f6;
+  --radius:      8px;
+  --sidebar-w:   200px;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Icons
+   Stroked with currentColor so they inherit hover/active states for free. */
+.sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+.icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-sm { width: 13px; height: 13px; }
+
+:where(.nav-item, .btn, .tab, .icon-btn, .swatch, .rm-check,
+        .dd-btn, .day-toggle):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Layout */
+.app-layout { display: flex; height: 100vh; }
+
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 16px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -.2px;
+}
+
+.logo-icon { width: 19px; height: 19px; color: var(--accent); }
+
+.sidebar-nav {
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.sidebar-footer {
+  padding: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.nav-portal { display: flex; align-items: center; gap: 2px; }
+.nav-portal .nav-item { flex: 1; }
+
+/* The portal launches a browser instead of routing, so it is a button that
+   has to be reset back to matching the nav anchors. */
+.nav-btn {
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+
+.portal-edit { opacity: 0; transition: opacity .15s; }
+.nav-portal:hover .portal-edit,
+.portal-edit:focus-visible { opacity: 1; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 6px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 14px;
+  transition: color .15s, background .15s;
+  user-select: none;
+}
+
+.nav-item:hover { color: var(--text); background: var(--surface2); }
+.nav-item.active { color: var(--accent); background: var(--accent-dim); font-weight: 500; }
+
+.main-content { flex: 1; overflow-y: auto; padding: 28px; }
+
+/* Page header */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 24px;
+  min-height: 34px;
+}
+.page-title { font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
+.header-actions { display: flex; align-items: center; gap: 8px; }
+
+/* Stats */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.stat-value { font-size: 30px; font-weight: 700; }
+.stat-value.accent { color: var(--accent); }
+.stat-value.danger { color: var(--danger); }
+.stat-value.warn   { color: var(--warn); }
+
+/* Section title */
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 12px;
+}
+
+/* Cards */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  transition: border-color .15s;
+}
+
+.card:hover { border-color: var(--muted); }
+
+.card-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.card-meta  { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.card-actions { display: flex; gap: 8px; margin-top: 14px; }
+
+/* Table */
+.table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+table { width: 100%; border-collapse: collapse; }
+
+th {
+  text-align: left;
+  padding: 11px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+
+td {
+  padding: 11px 14px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--surface2); }
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.badge-todo       { background: rgba(148,163,184,.12); color: var(--muted); }
+.badge-in_progress{ background: rgba(59,130,246,.15);  color: var(--info); }
+.badge-done       { background: var(--accent-dim);     color: var(--accent); }
+.badge-high       { background: var(--danger-dim);     color: var(--danger); }
+.badge-medium     { background: rgba(245,158,11,.15);  color: var(--warn); }
+.badge-low        { background: rgba(148,163,184,.1);  color: var(--muted); }
+.badge-overdue    { background: var(--danger-dim);     color: var(--danger); }
+.badge-today      { background: rgba(245,158,11,.15);  color: var(--warn); }
+.badge-tomorrow   { background: rgba(59,130,246,.12);  color: var(--info); }
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  transition: opacity .15s;
+  white-space: nowrap;
+}
+
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: #0ea472; }
+.btn-ghost   { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+.btn-ghost:hover { color: var(--text); border-color: var(--muted); background: var(--surface2); }
+.btn-danger  { background: var(--danger-dim); color: var(--danger); border: 1px solid transparent; }
+.btn-danger:hover { background: rgba(244,63,94,.22); }
+.btn-sm      { padding: 5px 10px; font-size: 12px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+/* .btn's inline-flex would otherwise beat the UA's [hidden] rule. */
+.btn[hidden] { display: none; }
+.btn-primary:disabled:hover { background: var(--accent); }
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color .15s, background .15s;
+}
+
+.icon-btn:hover { color: var(--text); background: var(--surface2); }
+.icon-btn.is-danger:hover { color: var(--danger); background: var(--danger-dim); }
+.icon-btn:disabled { opacity: .3; cursor: not-allowed; }
+.icon-btn:disabled:hover { color: var(--muted); background: none; }
+
+/* Filters / tabs */
+.filters {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.tabs {
+  display: flex;
+  gap: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px;
+}
+
+.tab {
+  padding: 5px 13px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--muted);
+  border: none;
+  background: none;
+  font-family: inherit;
+  transition: color .15s, background .15s;
+}
+
+.tab.active { background: var(--accent); color: #fff; }
+.tab:hover:not(.active) { color: var(--text); }
+
+/* Form controls */
+input[type="text"], input[type="date"],
+input[type="number"], input[type="url"], textarea {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 8px 10px;
+  outline: none;
+  font-family: inherit;
+}
+
+input:focus, textarea:focus { border-color: var(--accent); }
+
+/* `color-scheme: dark` already renders this glyph light; inverting it here
+   would push it back to black. Only the weight needs adjusting. */
+::-webkit-calendar-picker-indicator { opacity: .5; cursor: pointer; }
+::-webkit-calendar-picker-indicator:hover { opacity: .85; }
+
+/* Custom dropdown
+   Replaces every native <select> and <input type="time">, which the OS draws
+   light and no CSS can reach. Behaviour lives in app.js (dropdown/timeField
+   plus the dd*/tt* helpers).
+
+   .dd-panel is `position: fixed` because ddPosition() writes top/left inline,
+   which is also what lets it escape .modal-box's `overflow-y: auto`. Nothing
+   between it and the viewport may carry a transform, which would make the
+   ancestor a containing block and re-trap the panel. See the dialog rules
+   below, which settle at `transform: none` for exactly this reason. */
+.dd { position: relative; width: 100%; }
+
+/* Matches the input rule above line-for-line so a dropdown and a text field
+   sitting side by side in .form-grid-2 are indistinguishable. */
+.dd-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color .15s;
+}
+
+.dd-btn:hover { border-color: var(--muted); }
+.dd-btn[aria-expanded="true"] { border-color: var(--accent); }
+
+.dd-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.dd-caret {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+  transition: transform .15s;
+}
+
+.dd-btn[aria-expanded="true"] .dd-caret { transform: rotate(180deg); }
+
+/* Filter bars and the in-table status control. */
+.dd.dd-compact { width: auto; min-width: 128px; }
+.dd-compact .dd-btn { padding: 5px 8px; font-size: 12px; }
+
+/* max-height is load-bearing: the time field lists 96 options. */
+.dd-panel {
+  position: fixed;
+  z-index: 200;
+  min-width: 128px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.45);
+  animation: ddIn .14s ease-out;
+}
+
+/* A keyframe, not a transition: the panel is appended fresh on every open, so
+   there is no previous value to transition from. Matches the modal's .14s. */
+@keyframes ddIn {
+  from { opacity: 0; transform: scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+.dd-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dd-opt-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+
+/* .active is the keyboard cursor, .selected is the current value. An option
+   can be both, so .selected is declared second and wins on colour. */
+.dd-opt.active { background: var(--surface3); }
+.dd-opt.selected { background: var(--accent-dim); color: var(--accent); }
+.dd-opt.selected.active { background: var(--accent-dim); box-shadow: inset 0 0 0 1px var(--accent); }
+
+.dd-check { flex: none; width: 14px; height: 14px; opacity: 0; }
+.dd-opt.selected .dd-check { opacity: 1; }
+
+/* Time field
+   A real text input (so HH:MM stays typable) wearing the dropdown's panel. */
+.tt-input { width: 100%; padding-right: 30px; }
+
+.tt-caret {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tt-caret:hover { color: var(--text); }
+.tt-caret .icon { width: 15px; height: 15px; }
+
+/* Modal
+   `color` must be set here: the UA stylesheet gives dialog `color: CanvasText`,
+   which is a direct element match and so beats inheritance from body. Without
+   it every element inside the modal that has no colour of its own renders black.
+   `margin: auto` is what centres a modal dialog; the `*` reset above wipes it. */
+dialog {
+  color: var(--text);
+  background: none;
+  border: none;
+  padding: 0;
+  margin: auto;
+  max-width: 100vw;
+  max-height: 100vh;
+}
+
+dialog::backdrop { background: rgba(0,0,0,.65); }
+
+/* allow-discrete keeps the dialog in the top layer for the duration of the
+   exit transition, so closeModal() stays a plain .close() with no JS timer. */
+dialog, dialog::backdrop {
+  transition: opacity .14s ease-out, transform .14s ease-out,
+              display .14s allow-discrete, overlay .14s allow-discrete;
+}
+
+/* Settled state is `transform: none`, never `scale(1)`. Any non-none transform
+   would make the dialog a containing block and trap the fixed dropdown panels. */
+dialog { opacity: 0; transform: scale(.96); }
+dialog[open] { opacity: 1; transform: none; }
+dialog::backdrop { opacity: 0; }
+dialog[open]::backdrop { opacity: 1; }
+
+@starting-style {
+  dialog[open] { opacity: 0; transform: scale(.96); }
+  dialog[open]::backdrop { opacity: 0; }
+}
+
+.modal-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  width: 500px;
+  max-width: 95vw;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+
+.modal-header h2 { font-size: 16px; font-weight: 600; }
+
+/* Confirm dialog
+   Themed replacement for window.confirm(). It is a second <dialog>, so it
+   inherits the centring, backdrop and .14s fade/scale from the rules above at
+   no cost. When it stacks over an open form modal both backdrops paint, which
+   usefully pushes the form further back. */
+.confirm-box { width: 400px; }
+
+.confirm-body {
+  padding: 18px 20px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* The thing being deleted, lifted out of the surrounding sentence. */
+.confirm-body strong { color: var(--text); font-weight: 600; }
+
+.confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px 18px;
+}
+
+.confirm-actions .spacer { flex: 1; }
+
+/* Form inside modal */
+.form { padding: 20px; }
+.form-row { margin-bottom: 16px; }
+.form-row label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 600; letter-spacing: .03em; }
+.form-row input, .form-row textarea { width: 100%; }
+.form-row textarea { min-height: 120px; resize: vertical; }
+.form-actions { display: flex; gap: 8px; align-items: center; padding-top: 4px; }
+.form-actions .spacer { flex: 1; }
+
+.form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+.label-hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: .7;
+}
+
+/* Hidden until showFormError() adds .visible, so the layout does not jump. */
+.form-error {
+  display: none;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 14px;
+  padding: 9px 11px;
+  border-radius: 6px;
+  background: var(--danger-dim);
+  color: var(--danger);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.form-error.visible { display: flex; }
+.form-error .icon { flex: none; }
+
+/* Colour swatches */
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform .12s, border-color .12s;
+}
+
+.swatch:hover { transform: scale(1.12); }
+.swatch.active { border-color: var(--text); }
+
+.swatch-auto {
+  width: auto;
+  padding: 0 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.swatch-auto:hover { transform: none; color: var(--text); }
+.swatch-auto.active { border: 2px solid var(--text); color: var(--text); }
+
+/* Schedule settings
+   Seven equal columns rather than a ragged 4+3 wrap. .day-toggle borrows the
+   .tab idiom (muted → accent fill) so it adds no new visual language. */
+.day-toggles { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+
+.day-toggle {
+  padding: 9px 0;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: color .15s, background .15s, border-color .15s;
+}
+
+.day-toggle:hover:not(.active) { color: var(--text); border-color: var(--muted); }
+.day-toggle.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.day-presets { display: flex; gap: 6px; margin-top: 8px; }
+
+.form-divider { height: 1px; background: var(--border); margin: 18px 0; }
+
+.hour-range { display: flex; align-items: center; gap: 10px; }
+.hour-range .dd { flex: 1; }
+.hour-range .to { flex: none; font-size: 12px; color: var(--muted); }
+
+.settings-summary { margin-top: 10px; font-size: 12px; color: var(--muted); }
+
+/* Deadline list (dashboard) */
+.deadline-list { display: flex; flex-direction: column; gap: 8px; }
+
+.deadline-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.deadline-date  { font-size: 12px; color: var(--muted); min-width: 90px; }
+.deadline-title { font-size: 14px; flex: 1; }
+.deadline-course { font-size: 12px; color: var(--accent); white-space: nowrap; }
+
+/* Grade view */
+.grade-avg-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.grade-big { font-size: 38px; font-weight: 700; line-height: 1; }
+.grade-sub  { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+/* Progress bar */
+.progress-bar {
+  flex: 1;
+  height: 5px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 60px;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width .4s ease;
+}
+
+/* Notes */
+.note-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+
+.note-card:hover { border-color: var(--accent); }
+
+.note-preview {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.5;
+}
+
+.note-course-tag {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 2px 7px;
+  border-radius: 4px;
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+.note-date { font-size: 11px; color: var(--muted); }
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 64px 20px;
+  color: var(--muted);
+}
+
+.empty-icon {
+  width: 32px;
+  height: 32px;
+  stroke-width: 1.25;
+  margin-bottom: 12px;
+  opacity: .7;
+}
+
+.empty-text { font-size: 14px; }
+.empty-state .btn { margin-top: 16px; }
+
+/* Sits inside a section rather than filling the page. */
+.empty-inline {
+  padding: 32px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* Schedule
+   The head and body share one column template so day names stay locked to
+   their columns. --cols is set inline by renderSchedule(). Slots are 28px
+   with border-box sizing, so the gutter ticks line up with the percentage-
+   positioned blocks exactly. */
+.sched-wrap {
+  --slot-h: 28px;
+  --gutter-w: 62px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.sched-head,
+.sched-body {
+  display: grid;
+  grid-template-columns: var(--gutter-w) repeat(var(--cols), minmax(0, 1fr));
+}
+
+.sched-head {
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+}
+
+.sched-corner { border-right: 1px solid var(--border); }
+
+.sched-dayname {
+  padding: 9px 8px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  border-right: 1px solid var(--border);
+}
+
+.sched-dayname:last-child,
+.sched-col:last-child { border-right: none; }
+
+.sched-gutter { border-right: 1px solid var(--border); }
+.sched-col { position: relative; border-right: 1px solid var(--border); }
+
+.sched-slot {
+  height: var(--slot-h);
+  border-bottom: 1px dashed rgba(42,45,62,.55);
+}
+
+.sched-slot.is-hour { border-bottom-style: solid; border-bottom-color: var(--border); }
+.sched-slots .sched-slot { cursor: pointer; transition: background .12s; }
+.sched-slots .sched-slot:hover { background: var(--surface2); }
+
+.sched-gutter .sched-slot {
+  position: relative;
+  border-bottom-color: transparent;
+}
+
+.sched-tick {
+  position: absolute;
+  top: -7px;
+  right: 8px;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  background: var(--surface);
+  padding: 0 2px;
+}
+
+.sched-gutter .sched-slot:first-child .sched-tick { top: 1px; }
+
+/* Lets clicks fall through the gaps to the add-slot cells underneath. */
+.sched-blocks { position: absolute; inset: 0; pointer-events: none; }
+
+.sched-block {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  overflow: hidden;
+  padding: 3px 7px;
+  border-radius: 5px;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: filter .12s;
+}
+
+.sched-block:hover { filter: brightness(1.35); }
+
+.sb-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-note {
+  font-size: 10.5px;
+  color: var(--muted);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-time {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Short blocks drop detail rather than clipping mid-line. */
+.sched-block[data-size="sm"] .sb-note,
+.sched-block[data-size="xs"] .sb-note,
+.sched-block[data-size="xs"] .sb-time { display: none; }
+.sched-block[data-size="xs"] { padding: 1px 6px; }
+.sched-block[data-size="xs"] .sb-title { font-size: 10.5px; }
+
+.sched-foot {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.sched-hidden { display: inline-flex; align-items: center; gap: 6px; color: var(--warn); }
+
+/* Roadmap */
+.rm-progress { margin-bottom: 18px; }
+
+.rm-progress-text {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.rm-progress .progress-bar { flex: none; width: 100%; }
+
+.roadmap-list { display: flex; flex-direction: column; gap: 8px; }
+
+.rm-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color .15s, opacity .15s;
+}
+
+.rm-item:hover { border-color: var(--muted); }
+.rm-item.dragging { opacity: .4; }
+.rm-item.drop-target { border-color: var(--accent); }
+
+.rm-grip { display: flex; color: var(--border); cursor: grab; flex: none; }
+.rm-item:hover .rm-grip { color: var(--muted); }
+.rm-grip:active { cursor: grabbing; }
+
+.rm-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 19px;
+  height: 19px;
+  flex: none;
+  padding: 0;
+  border: 1.5px solid var(--border);
+  border-radius: 5px;
+  background: none;
+  color: #fff;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+
+.rm-check:hover { border-color: var(--accent); }
+.rm-check .icon { width: 12px; height: 12px; stroke-width: 3; }
+
+.rm-body { flex: 1; min-width: 0; cursor: pointer; }
+.rm-title { font-size: 14px; line-height: 1.4; }
+
+.rm-desc {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 3px;
+  line-height: 1.45;
+}
+
+.rm-item.done .rm-check { background: var(--accent); border-color: var(--accent); }
+.rm-item.done .rm-title { text-decoration: line-through; color: var(--muted); }
+.rm-item.done .rm-desc { opacity: .6; }
+
+.rm-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+
+/* Loading */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
