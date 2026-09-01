@@ -131,6 +131,81 @@ class Api:
         c.commit()
         return row
 
+    # Semesters
+    # The active semester is server state, not a per-call argument. Every get_*
+    # below scopes itself through _active_semester_id(), so a new view or query
+    # cannot forget to filter and no stale id can arrive from the frontend.
+
+    def _active_semester_id(self):
+        """Stored active semester, else the is_current one, else the earliest."""
+        raw = self._get_setting('active_semester_id')
+        if raw:
+            # Re-validated so a setting left pointing at a missing row self-heals
+            # instead of filtering every view down to nothing.
+            row = self._one("SELECT id FROM semesters WHERE id=%s", (int(raw),))
+            if row:
+                return row['id']
+        row = self._one("""
+            SELECT id FROM semesters
+            ORDER BY is_current DESC, academic_year_start, semester_number LIMIT 1
+        """)
+        return row['id'] if row else None
+
+    def get_semesters(self):
+        return _j(self._q("""
+            SELECT * FROM semesters ORDER BY academic_year_start, semester_number
+        """))
+
+    def get_active_semester(self):
+        sid = self._active_semester_id()
+        if sid is None:
+            return None
+        return _j(self._one("SELECT * FROM semesters WHERE id=%s", (sid,)))
+
+    def set_active_semester(self, id):
+        row = self._one("SELECT * FROM semesters WHERE id=%s", (int(id),))
+        if not row:
+            return {'error': 'That semester no longer exists.'}
+        self._set_setting('active_semester_id', str(row['id']))
+        return _j(row)
+
+    def finish_semester(self):
+        """Create the next semester in sequence and switch to it.
+
+        One statement on purpose: _ret commits once, so the insert, the is_current
+        flip and the active-semester setting land together. A multi-call version
+        could leave a new semester that nothing points at.
+        """
+        cur = self._one(
+            "SELECT * FROM semesters WHERE id=%s", (self._active_semester_id(),))
+        if not cur:
+            return {'error': 'No semester to finish.'}
+        if cur['semester_number'] == 1:
+            num, ys = 2, cur['academic_year_start']
+        else:
+            num, ys = 1, cur['academic_year_start'] + 1
+        # DO UPDATE, not DO NOTHING: a double click, or a term the user already
+        # created, returns the existing row rather than nothing.
+        return _j(self._ret("""
+            WITH nxt AS (
+                INSERT INTO semesters
+                    (label, semester_number, academic_year_start, academic_year_end,
+                     is_current)
+                VALUES (%s, %s, %s, %s, TRUE)
+                ON CONFLICT (academic_year_start, semester_number)
+                  DO UPDATE SET is_current = TRUE
+                RETURNING *
+            ), cleared AS (
+                UPDATE semesters SET is_current = FALSE
+                WHERE id <> (SELECT id FROM nxt) AND is_current
+            ), active AS (
+                INSERT INTO settings (key, value)
+                SELECT 'active_semester_id', id::text FROM nxt
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+            )
+            SELECT * FROM nxt
+        """, ('Semester %d %d-%d' % (num, ys, ys + 1), num, ys, ys + 1)))
+
     # Courses
 
     def get_courses(self):
@@ -144,34 +219,37 @@ class Api:
             FROM courses c
             LEFT JOIN grades g ON g.course_id = c.id
             LEFT JOIN assignments a ON a.course_id = c.id
+            WHERE c.semester_id = %s
             GROUP BY c.id
             ORDER BY c.name
-        """))
+        """, (self._active_semester_id(),)))
 
     def get_all_courses_simple(self):
-        return _j(self._q("SELECT id, name FROM courses ORDER BY name"))
+        return _j(self._q(
+            "SELECT id, name FROM courses WHERE semester_id=%s ORDER BY name",
+            (self._active_semester_id(),),
+        ))
 
     def add_course(self, data):
         return _j(self._ret("""
-            INSERT INTO courses (name, code, instructor, semester, credits)
+            INSERT INTO courses (name, code, instructor, credits, semester_id)
             VALUES (%s, %s, %s, %s, %s) RETURNING *
         """, (
             data['name'],
             data.get('code') or None,
             data.get('instructor') or None,
-            data.get('semester') or None,
             int(data.get('credits') or 3),
+            self._active_semester_id(),
         )))
 
     def update_course(self, id, data):
         return _j(self._ret("""
-            UPDATE courses SET name=%s, code=%s, instructor=%s, semester=%s, credits=%s
+            UPDATE courses SET name=%s, code=%s, instructor=%s, credits=%s
             WHERE id=%s RETURNING *
         """, (
             data['name'],
             data.get('code') or None,
             data.get('instructor') or None,
-            data.get('semester') or None,
             int(data.get('credits') or 3),
             int(id),
         )))
@@ -184,25 +262,29 @@ class Api:
 
     def get_dashboard(self):
         today = date.today()
+        sid = self._active_semester_id()
         return _j({
             'upcoming': self._q("""
                 SELECT a.id, a.title, a.due_date, a.priority, a.status,
                        c.name AS course_name
                 FROM assignments a
                 JOIN courses c ON c.id = a.course_id
-                WHERE a.due_date BETWEEN %s AND %s + INTERVAL '14 days'
+                WHERE a.semester_id = %s
+                  AND a.due_date BETWEEN %s AND %s + INTERVAL '14 days'
                   AND a.status != 'done'
                 ORDER BY a.due_date,
                          CASE a.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END
-            """, (today, today)),
+            """, (sid, today, today)),
             'overdue_count': self._one("""
                 SELECT COUNT(*) AS n FROM assignments
-                WHERE due_date < %s AND status != 'done'
-            """, (today,))['n'],
+                WHERE semester_id = %s AND due_date < %s AND status != 'done'
+            """, (sid, today))['n'],
             'pending_count': self._one("""
-                SELECT COUNT(*) AS n FROM assignments WHERE status IN ('todo','in_progress')
-            """)['n'],
-            'courses_count': self._one("SELECT COUNT(*) AS n FROM courses")['n'],
+                SELECT COUNT(*) AS n FROM assignments
+                WHERE semester_id = %s AND status IN ('todo','in_progress')
+            """, (sid,))['n'],
+            'courses_count': self._one(
+                "SELECT COUNT(*) AS n FROM courses WHERE semester_id = %s", (sid,))['n'],
             'grade_avgs': self._q("""
                 SELECT c.id, c.name,
                     ROUND(
@@ -210,23 +292,25 @@ class Api:
                     1) AS avg_grade
                 FROM courses c
                 LEFT JOIN grades g ON g.course_id = c.id
+                WHERE c.semester_id = %s
                 GROUP BY c.id, c.name
                 HAVING COUNT(g.id) FILTER (WHERE g.grade IS NOT NULL) > 0
                 ORDER BY c.name
-            """),
+            """, (sid,)),
         })
 
     # Assignments
 
     def get_assignments(self, course_id=None, status=None):
-        where, params = [], []
+        where = ["a.semester_id = %s"]
+        params = [self._active_semester_id()]
         if course_id is not None:
             where.append("a.course_id = %s")
             params.append(int(course_id))
         if status and status != 'all':
             where.append("a.status = %s")
             params.append(status)
-        w = ("WHERE " + " AND ".join(where)) if where else ""
+        w = "WHERE " + " AND ".join(where)
         return _j(self._q(f"""
             SELECT a.*, c.name AS course_name
             FROM assignments a
@@ -238,8 +322,9 @@ class Api:
 
     def add_assignment(self, data):
         return _j(self._ret("""
-            INSERT INTO assignments (course_id, title, due_date, status, priority, notes)
-            VALUES (%s, %s, %s, %s, %s, %s) RETURNING *
+            INSERT INTO assignments
+                (course_id, title, due_date, status, priority, notes, semester_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *
         """, (
             int(data['course_id']),
             data['title'],
@@ -247,6 +332,7 @@ class Api:
             data.get('status', 'todo'),
             data.get('priority', 'medium'),
             data.get('notes') or None,
+            self._active_semester_id(),
         )))
 
     def update_assignment(self, id, data):
@@ -272,8 +358,8 @@ class Api:
 
     def get_grades(self, course_id):
         rows = _j(self._q(
-            "SELECT * FROM grades WHERE course_id=%s ORDER BY id",
-            (int(course_id),),
+            "SELECT * FROM grades WHERE course_id=%s AND semester_id=%s ORDER BY id",
+            (int(course_id), self._active_semester_id()),
         ))
         graded = [r for r in rows if r['grade'] is not None]
         weighted = [r for r in graded if (r['weight'] or 0) > 0]
@@ -326,14 +412,16 @@ class Api:
         if err:
             return {'error': err}
         return _j(self._ret("""
-            INSERT INTO grades (course_id, assessment_name, grade, max_grade, weight)
-            VALUES (%s, %s, %s, %s, %s) RETURNING *
+            INSERT INTO grades
+                (course_id, assessment_name, grade, max_grade, weight, semester_id)
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING *
         """, (
             int(data['course_id']),
             v['assessment_name'],
             v['grade'],
             v['max_grade'],
             v['weight'],
+            self._active_semester_id(),
         )))
 
     def update_grade(self, id, data):
@@ -358,28 +446,32 @@ class Api:
     # Notes
 
     def get_notes(self, course_id=None):
+        sid = self._active_semester_id()
         if course_id is not None:
             return _j(self._q("""
                 SELECT n.*, c.name AS course_name
                 FROM notes n
                 LEFT JOIN courses c ON c.id = n.course_id
-                WHERE n.course_id = %s
+                WHERE n.semester_id = %s AND n.course_id = %s
                 ORDER BY n.created_at DESC
-            """, (int(course_id),)))
+            """, (sid, int(course_id))))
         return _j(self._q("""
             SELECT n.*, c.name AS course_name
             FROM notes n
             LEFT JOIN courses c ON c.id = n.course_id
+            WHERE n.semester_id = %s
             ORDER BY n.created_at DESC
-        """))
+        """, (sid,)))
 
     def add_note(self, data):
         return _j(self._ret("""
-            INSERT INTO notes (course_id, title, content) VALUES (%s, %s, %s) RETURNING *
+            INSERT INTO notes (course_id, title, content, semester_id)
+            VALUES (%s, %s, %s, %s) RETURNING *
         """, (
             int(data['course_id']) if data.get('course_id') else None,
             data['title'],
             data.get('content', ''),
+            self._active_semester_id(),
         )))
 
     def update_note(self, id, data):
@@ -420,9 +512,10 @@ class Api:
                    COALESCE(NULLIF(c.code, ''), c.name) AS label
             FROM schedule s
             JOIN courses c ON c.id = s.course_id
-            WHERE s.day_of_week = %s AND s.start_time < %s AND s.end_time > %s
+            WHERE s.semester_id = %s
+              AND s.day_of_week = %s AND s.start_time < %s AND s.end_time > %s
         """
-        params = [int(day), end, start]
+        params = [self._active_semester_id(), int(day), end, start]
         if exclude_id is not None:
             sql += " AND s.id <> %s"
             params.append(int(exclude_id))
@@ -461,19 +554,21 @@ class Api:
             SELECT s.*, c.name AS course_name, c.code AS course_code
             FROM schedule s
             JOIN courses c ON c.id = s.course_id
+            WHERE s.semester_id = %s
             ORDER BY s.day_of_week, s.start_time
-        """))
+        """, (self._active_semester_id(),)))
 
     def add_schedule_entry(self, data):
         v, err = self._validated_entry(data)
         if err:
             return {'error': err}
         return _j(self._ret("""
-            INSERT INTO schedule (course_id, day_of_week, start_time, end_time, note, color)
-            VALUES (%s, %s, %s, %s, %s, %s) RETURNING *
+            INSERT INTO schedule
+                (course_id, day_of_week, start_time, end_time, note, color, semester_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING *
         """, (
             v['course_id'], v['day_of_week'], v['start_time'],
-            v['end_time'], v['note'], v['color'],
+            v['end_time'], v['note'], v['color'], self._active_semester_id(),
         )))
 
     def update_schedule_entry(self, id, data):
@@ -534,12 +629,13 @@ class Api:
 
     def add_roadmap_item(self, data):
         return _j(self._ret("""
-            INSERT INTO roadmap_items (title, description, position)
-            VALUES (%s, %s, (SELECT COALESCE(MAX(position), -1) + 1 FROM roadmap_items))
+            INSERT INTO roadmap_items (title, description, position, semester_id)
+            VALUES (%s, %s, (SELECT COALESCE(MAX(position), -1) + 1 FROM roadmap_items), %s)
             RETURNING *
         """, (
             data['title'],
             (data.get('description') or '').strip() or None,
+            self._active_semester_id(),
         )))
 
     def update_roadmap_item(self, id, data):

@@ -4,6 +4,11 @@
 let courses = [];
 let initialized = false;
 
+// The active semester scopes every view. The backend is the source of truth
+// (it filters each query itself); these two only drive the selector's own UI.
+let semesters = [];
+let activeSemesterId = null;
+
 // Per-view filter state (persists across navigation)
 const assignFilter = { course_id: null, status: 'all' };
 let selectedCourseId = null;
@@ -44,10 +49,19 @@ function courseOptions(lead) {
   return lead ? [lead, ...list] : list;
 }
 
+function semesterOptions() {
+  return semesters.map(s => ({ v: String(s.id), label: s.label }));
+}
+
 // Bootstrap
 async function init() {
   if (initialized) return;
   initialized = true;
+  // Semesters first: the course list is scoped to whichever one is active.
+  semesters = await api('get_semesters');
+  const active = await api('get_active_semester');
+  activeSemesterId = active ? active.id : null;
+  renderSemesterSelector();
   courses = await api('get_all_courses_simple');
   navigate();
 }
@@ -575,7 +589,7 @@ async function renderCourses() {
     : `<div class="cards-grid">
         ${data.map(c => {
           const pct = c.avg_grade;
-          const metaParts = [c.code, c.instructor, c.semester, `${c.credits} cr`].filter(Boolean);
+          const metaParts = [c.code, c.instructor, `${c.credits} cr`].filter(Boolean);
           return `
             <div class="card">
               <div class="card-title">${esc(c.name)}</div>
@@ -614,8 +628,6 @@ function courseFormHTML(c = {}) {
       <input id="f-code" type="text" value="${esc(c.code || '')}" placeholder="e.g. CS101"></div>
     <div class="form-row"><label>Instructor</label>
       <input id="f-instructor" type="text" value="${esc(c.instructor || '')}"></div>
-    <div class="form-row"><label>Semester</label>
-      <input id="f-semester" type="text" value="${esc(c.semester || '')}" placeholder="e.g. Fall 2025"></div>
     <div class="form-row"><label>Credits</label>
       <input id="f-credits" type="number" value="${c.credits ?? 3}" min="0" max="30"></div>
     <div id="f-error" class="form-error"></div>
@@ -641,7 +653,6 @@ async function saveCourse(id) {
     name,
     code:       document.getElementById('f-code').value.trim(),
     instructor: document.getElementById('f-instructor').value.trim(),
-    semester:   document.getElementById('f-semester').value.trim(),
     credits:    parseInt(document.getElementById('f-credits').value) || 3,
   };
   if (id) await api('update_course', id, data);
@@ -1454,6 +1465,94 @@ function rmDrop(ev, targetId) {
   persistRoadmapOrder(ids);
 }
 
+// Semesters
+// The selector lives in the sidebar, outside #content, so nothing re-renders it
+// on navigation. dropdown() re-registers DD['sem-picker'] on every repaint here.
+function renderSemesterSelector() {
+  const host = document.getElementById('semester-picker');
+  if (!host) return;
+  host.innerHTML = dropdown('sem-picker', semesterOptions(), activeSemesterId,
+    { compact: true, placeholder: 'No semesters', onChange: switchSemester });
+}
+
+// Course ids belong to the semester they were cached under, so all three course
+// filters have to be dropped. saveGrade reads course_id straight from
+// selectedCourseId, and a leftover id would INSERT against a missing FK.
+async function switchSemester(v) {
+  const id = parseInt(v);
+  if (!id || id === activeSemesterId) return;
+  try {
+    const res = await api('set_active_semester', id);
+    if (res && res.error) { alertModal(res.error); renderSemesterSelector(); return; }
+    activeSemesterId = id;
+    selectedCourseId = null;
+    assignFilter.course_id = null;
+    noteFilterCourse = null;
+    courses = await api('get_all_courses_simple');
+    navigate();
+  } catch (err) {
+    // Outside navigate()'s try/catch, so this is the only thing that would show.
+    alertModal(String(err));
+  }
+}
+
+function openSemesterManager() {
+  const rows = semesters.map(s => `<div class="sem-row${s.id === activeSemesterId ? ' active' : ''}">
+    <span class="sem-label">${esc(s.label)}</span>
+    ${s.id === activeSemesterId ? '<span class="sem-tag">Active</span>' : ''}
+  </div>`).join('');
+
+  openModal('Semesters', `<div class="form">
+    <div class="form-row">
+      <label>All semesters</label>
+      <div class="sem-list">${rows || '<div class="sem-row">None yet</div>'}</div>
+      <div class="label-hint" style="margin-top:6px">
+        Older semesters stay here. Switching back shows them exactly as they were.</div>
+    </div>
+    <div class="form-divider"></div>
+    <div class="form-row">
+      <label>Finished the semester?</label>
+      <div class="label-hint">
+        Creates the next semester in sequence and switches to it. The new one starts
+        empty; nothing here is deleted.</div>
+    </div>
+    <div id="f-error" class="form-error"></div>
+    <div class="form-actions">
+      <div class="spacer"></div>
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="f-save" onclick="finishSemester()">
+        I finished this semester</button>
+    </div>
+  </div>`);
+}
+
+async function finishSemester() {
+  const cur = semesters.find(s => s.id === activeSemesterId);
+  const next = cur
+    ? (cur.semester_number === 1
+        ? `Semester 2 ${cur.academic_year_start}-${cur.academic_year_end}`
+        : `Semester 1 ${cur.academic_year_start + 1}-${cur.academic_year_end + 1}`)
+    : null;
+  if (!await askConfirm(
+    next
+      ? `Start <strong>${esc(next)}</strong>? It begins empty, and
+         ${esc(cur.label)} stays available in the dropdown.`
+      : 'Start the next semester?',
+    { title: 'Finish semester', okLabel: 'Start it', danger: false })) return;
+
+  const res = await api('finish_semester');
+  if (res && res.error) { showFormError(res.error); return; }
+  semesters = await api('get_semesters');
+  activeSemesterId = res.id;
+  selectedCourseId = null;
+  assignFilter.course_id = null;
+  noteFilterCourse = null;
+  courses = await api('get_all_courses_simple');
+  renderSemesterSelector();
+  closeModal();
+  navigate();
+}
+
 // Uni Portal
 async function openPortal() {
   const { url } = await api('get_portal_url');
@@ -1466,7 +1565,8 @@ async function openPortalSettings() {
   const { url } = await api('get_portal_url');
   openModal('Uni Portal', `<div class="form">
     <div class="form-row"><label>Portal URL</label>
-      <input id="f-portal" type="text" value="${esc(url)}" placeholder="portal.university.edu">
+      <input id="f-portal" type="text" value="${esc(url)}" placeholder="portal.university.edu"
+        oninput="showFormError('')">
       <div class="label-hint" style="margin-top:6px">
         Opens in your default browser. http:// or https:// only.</div></div>
     <div id="f-error" class="form-error"></div>

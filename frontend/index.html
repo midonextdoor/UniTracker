@@ -90,6 +90,19 @@
         <svg class="icon logo-icon"><use href="#i-logo"/></svg>
         <span class="logo-text">UniTracker</span>
       </div>
+
+      <!-- Scopes the whole app. Lives outside #content so it survives every
+           render, and its dropdown is registered once by init(). -->
+      <div class="sidebar-semester">
+        <div class="nav-portal">
+          <div id="semester-picker"></div>
+          <button class="icon-btn portal-edit" onclick="openSemesterManager()"
+                  title="Manage semesters" aria-label="Manage semesters">
+            <svg class="icon icon-sm"><use href="#i-sliders"/></svg>
+          </button>
+        </div>
+      </div>
+
       <nav class="sidebar-nav">
         <a class="nav-item" data-view="dashboard" href="#dashboard">
           <svg class="icon"><use href="#i-dashboard"/></svg><span>Dashboard</span>
